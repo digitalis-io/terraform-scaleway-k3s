@@ -1,0 +1,64 @@
+#cloud-config
+
+package_update: true
+packages:
+  - curl
+  - git
+  - tar
+  - wireguard
+
+runcmd:
+  # --- k3s server install ---
+  - echo "Installing k3s server..."
+  - |
+    export INSTALL_K3S_EXEC="server --flannel-backend=${flannel_backend} ${k3s_server_extra_args}"
+    export K3S_TOKEN="${k3s_token}"
+%{ if k3s_version != "" ~}
+    export INSTALL_K3S_VERSION="${k3s_version}"
+%{ endif ~}
+    curl -sfL https://get.k3s.io | K3S_KUBECONFIG_MODE="644" sh -
+
+%{ if install_helm ~}
+  # --- Helm ---
+  - echo "Installing Helm..."
+  - curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+%{ endif ~}
+
+%{ if install_k9s ~}
+  # --- k9s ---
+  - |
+    echo "Installing k9s..."
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)  K9S_ARCH="amd64" ;;
+        aarch64|arm64) K9S_ARCH="arm64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+    esac
+    K9S_VERSION=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    curl -sLo k9s.tar.gz "https://github.com/derailed/k9s/releases/download/$${K9S_VERSION}/k9s_Linux_$${K9S_ARCH}.tar.gz"
+    tar -xzf k9s.tar.gz k9s
+    install k9s /usr/local/bin/
+    rm -f k9s k9s.tar.gz
+%{ endif ~}
+
+%{ if install_stern ~}
+  # --- Stern ---
+  - |
+    echo "Installing Stern..."
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)  S_ARCH="amd64" ;;
+        aarch64|arm64) S_ARCH="arm64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+    esac
+    STERN_VERSION=$(curl -s https://api.github.com/repos/stern/stern/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    curl -sLo stern.tar.gz "https://github.com/stern/stern/releases/download/$${STERN_VERSION}/stern_$${STERN_VERSION#v}_linux_$${S_ARCH}.tar.gz"
+    tar zxf stern.tar.gz -C /usr/local/bin
+    rm -f /usr/local/bin/LICENSE stern.tar.gz
+%{ endif ~}
+
+  # --- Shell environment ---
+  - echo "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml" >> /etc/bash.bashrc
+  - echo "alias k=kubectl" >> /etc/bash.bashrc
+
+final_message: "k3s server node is ready, after $UPTIME seconds"
