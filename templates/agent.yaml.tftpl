@@ -1,0 +1,54 @@
+#cloud-config
+
+package_update: true
+packages:
+  - curl
+  - git
+  - tar
+  - wireguard
+
+runcmd:
+  # --- k3s agent install ---
+  - echo "Installing k3s agent..."
+  - |
+    export K3S_TOKEN="${k3s_token}"
+    export K3S_URL="${k3s_join_url}"
+%{ if k3s_version != "" ~}
+    export INSTALL_K3S_VERSION="${k3s_version}"
+%{ endif ~}
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent ${k3s_agent_extra_args}" sh -
+
+%{ if install_k9s ~}
+  # --- k9s ---
+  - |
+    echo "Installing k9s..."
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)  K9S_ARCH="amd64" ;;
+        aarch64|arm64) K9S_ARCH="arm64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+    esac
+    K9S_VERSION=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    curl -sLo k9s.tar.gz "https://github.com/derailed/k9s/releases/download/$${K9S_VERSION}/k9s_Linux_$${K9S_ARCH}.tar.gz"
+    tar -xzf k9s.tar.gz k9s
+    install k9s /usr/local/bin/
+    rm -f k9s k9s.tar.gz
+%{ endif ~}
+
+%{ if install_stern ~}
+  # --- Stern ---
+  - |
+    echo "Installing Stern..."
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)  S_ARCH="amd64" ;;
+        aarch64|arm64) S_ARCH="arm64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+    esac
+    STERN_VERSION=$(curl -s https://api.github.com/repos/stern/stern/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    curl -sLo stern.tar.gz "https://github.com/stern/stern/releases/download/$${STERN_VERSION}/stern_$${STERN_VERSION#v}_linux_$${S_ARCH}.tar.gz"
+    tar zxf stern.tar.gz -C /usr/local/bin
+    rm -f /usr/local/bin/LICENSE stern.tar.gz
+%{ endif ~}
+
+final_message: "k3s agent node is ready, after $UPTIME seconds"

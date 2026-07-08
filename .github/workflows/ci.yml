@@ -27,6 +27,12 @@ jobs:
           tofu_version: latest
       - run: tofu init -backend=false
       - run: tofu validate
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+      - uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: latest
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
